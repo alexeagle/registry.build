@@ -22,12 +22,24 @@ import {
 import { useHistory, useLocation } from "@docusaurus/router";
 import Link from "@docusaurus/Link";
 import Head from "@docusaurus/Head";
+import "./tabs.css";
 
 const Module = (props) => {
   let history = useHistory();
   let location = useLocation();
   let version = getVersion(location);
   let release = getReleaseForTag(props.data.releases, version);
+  // Get initial tab from URL fragment or default to 'details'
+  const [activeTab, setActiveTab] = useState(() => {
+    const hash = location.hash.replace('#', '');
+    return ['details', 'release-notes', 'readme', 'api-docs'].includes(hash) ? hash : 'details';
+  });
+
+  // Update URL fragment when tab changes
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    history.replace({ ...location, hash: tab });
+  };
 
   let [workspaceCopied, setWorkspaceCopied] = useState(false);
   let [moduleCopied, setModuleCopied] = useState(false);
@@ -65,7 +77,34 @@ const Module = (props) => {
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:site" content="@BuildRegistry" />
       </Head>
-      <div className="package">
+      <div className="package-tabs">
+        <button
+          className={`tab-button ${activeTab === 'details' ? 'active' : ''}`}
+          onClick={() => handleTabChange('details')}
+        >
+          Details
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'release-notes' ? 'active' : ''}`}
+          onClick={() => handleTabChange('release-notes')}
+        >
+          Release Notes
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'readme' ? 'active' : ''}`}
+          onClick={() => handleTabChange('readme')}
+        >
+          README
+        </button>
+        <button
+          className={`tab-button ${activeTab === 'api-docs' ? 'active' : ''}`}
+          onClick={() => handleTabChange('api-docs')}
+        >
+          API Docs
+        </button>
+      </div>
+
+      <div className="package" style={{ display: activeTab === 'details' ? 'block' : 'none' }}>
         <div className="package-header">
           <div className="package-name">{props.data.name}</div>
           <img
@@ -73,7 +112,8 @@ const Module = (props) => {
             src={props.data.repo.owner.avatar_url}
             loading="lazy"
           />
-        </div>{" "}
+        </div>
+        <div className="package-description">{props.data.repo.description}</div>
         <div className="package-stats">
           <div className="package-version">
             <GitCommit className="package-icon" />
@@ -81,8 +121,7 @@ const Module = (props) => {
           </div>
           <div className="package-age">
             <History className="package-icon" />
-            published {(release && since(release.published_at)) ||
-              "unknown"}{" "}
+            published {(release && since(release.published_at)) || "unknown"}{" "}
             ago
           </div>
           <div className="package-stars">
@@ -97,8 +136,19 @@ const Module = (props) => {
             <Eye className="package-icon" />
             {props.data.repo.subscribers_count.toLocaleString()} watchers
           </div>
+          {release && (
+            <div className="package-downloads">
+              <Download className="package-icon" />
+              {props.data.releases
+                .flatMap((r) => r.assets)
+                .map((a) => a.download_count)
+                .reduce((a, b) => a + b, 0)
+                .toLocaleString()}{" "}
+              downloads
+            </div>
+          )}
         </div>
-        <div className="package-stats">
+        <div className="package-meta">
           <div className="package-repo">
             <Github className="package-icon" />
             <a target="_blank" href={props.data.repo.html_url}>
@@ -232,105 +282,49 @@ const Module = (props) => {
           )}
         </div>
       </div>
-      {release &&
-        [release].map((release) => (
-          <div className="package package-release" key={release.tag_name}>
-            <div className="release-header">
-              <div className="release-name">{release.tag_name}</div>
-              <div className="release-date">
-                {new Date(release.published_at).toLocaleDateString("en-us", {
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </div>
-              <div className="package-release-dropdown-container">
-                <select
-                  className="package-release-dropdown"
-                  onChange={(e) =>
+      {/* Release Notes Tab */}
+      {release && (
+        <div className="package" style={{ display: activeTab === 'release-notes' ? 'block' : 'none' }}>
+          <div className="package-header">
+            <div className="package-name">{release.name || release.tag_name}</div>
+            <div className="package-version-select">
+              <select
+                value={version}
+                onChange={(e) => {
+                  if (e.target.value) {
                     history.push(
-                      `${location.pathname
-                        .split("@")[0]
-                        .replace(/\/$/, "")}@${e.target.value.replace(
-                        /^v/,
-                        ""
-                      )}`
-                    )
+                      location.pathname.replace(/@.*$/, "@" + e.target.value)
+                    );
+                  } else {
+                    history.push(location.pathname.replace(/@.*$/, ""));
                   }
-                  value={getVersion(location)}
-                >
-                  {props.data.releases.map((r) => (
-                    <option
-                      key={r.tag_name}
-                      value={r.tag_name.replace(/^v/, "")}
-                    >
-                      {r.tag_name.replace(/^v/, "")}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                }}
+              >
+                <option value="">latest</option>
+                {props.data.releases.map((r) => (
+                  <option key={r.tag_name} value={r.tag_name.replace(/^v/, "")}>
+                    {r.tag_name.replace(/^v/, "")}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div
-              className="package-rendered"
-              dangerouslySetInnerHTML={{
-                __html: release.body.replace(
-                  new RegExp(
-                    `<h1.*?>.*?${release.name.replace(
-                      /[-[\]{}()*+?.,\\^$|#\s]/g,
-                      "\\$&"
-                    )}.*?</h1>`
-                  ),
-                  ""
-                ),
-              }}
-            />
-            {
-              <>
-                {versionData && (
-                  <div className="package-deps">
-                    <b>Deps:</b>
-                    <ul>
-                      {[
-                        ...versionData.module.matchAll(
-                          /bazel_dep\(.*?name.*?=.*?\"(.*?)\".*?version.*?=.*?\"(.*?)\".*?\)/g
-                        ),
-                      ].map((m) => (
-                        <li key={m[1]}>
-                          <Link href={`/bazel/${m[1]}`}>{m[1]}</Link> · version{" "}
-                          {m[2]}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {release && release.assets.length > 0 && (
-                  <div className="package-assets">
-                    <b>Assets:</b>
-                    <ul>
-                      {release.assets.map((a) => (
-                        <li key={a.name}>
-                          <a href={a.browser_download_url}>{a.name}</a> ·{" "}
-                          {size(a.size)} · {a.download_count.toLocaleString()}{" "}
-                          downloads
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {versionData && versionData.patches.length > 0 && (
-                  <div className="package-time">
-                    Patches:
-                    {Object.keys(versionData.patches).map((p) => (
-                      <div key={p}>{p}</div>
-                    ))}
-                  </div>
-                )}
-              </>
-            }
           </div>
-        ))}
-      {
-        <div className="package">
+          <div className="package-rendered"
+            dangerouslySetInnerHTML={{
+              __html: release.body.replace(
+                new RegExp(
+                  `<h1.*?>.*?${release.name.replace(
+                    /[-[\]{}()*+?.,\\^$|#\s]/g,
+                    "\\$&"
+                  )}.*?</h1>`
+                ),
+                ""
+              ),
+            }}
+          />
+        </div>
+      )}
+      <div className="package" style={{ display: activeTab === 'readme' ? 'block' : 'none' }}>
           <div
             className="package-rendered"
             dangerouslySetInnerHTML={{
@@ -354,7 +348,16 @@ const Module = (props) => {
             }}
           />
         </div>
-      }
+      <div className="package" style={{ display: activeTab === 'api-docs' ? 'block' : 'none' }}>
+        <div className="package-header">
+          <h2>API Documentation</h2>
+        </div>
+        <div className="package-content">
+          <p>API documentation will be available soon.
+            <br />
+            See <a href="https://alexeagle.github.io/doc.bzl/">doc.bzl</a> for now.</p>
+        </div>
+      </div>
     </div>
   );
 };
